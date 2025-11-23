@@ -16,12 +16,16 @@ interface AnalysisSidebarProps {
   onOpenAnalysis: (tool: string) => void;
   onAttachToChat: (analysisId: string) => void;
   recentAnalyses: any[];
+  onOpenAnalysisDetails: (id: string) => void; // ADD THIS
+  onOpenAnalysisList: () => void;
 }
 
 export default function AnalysisSidebar({
   onOpenAnalysis,
   onAttachToChat,
   recentAnalyses,
+  onOpenAnalysisDetails,
+  onOpenAnalysisList,
 }: AnalysisSidebarProps) {
   return (
     <aside
@@ -34,6 +38,8 @@ export default function AnalysisSidebar({
       shadow-[0_8px_30px_rgba(0,0,0,0.06)] 
       p-6 
       rounded-l-3xl
+      max-h-screen 
+      overflow-y-auto
     "
     >
       <h2 className="text-sm uppercase tracking-[0.3em] text-stone-500 mb-4">
@@ -90,7 +96,7 @@ export default function AnalysisSidebar({
             >
               <div
                 className="flex items-center gap-3 cursor-pointer"
-                onClick={() => onOpenAnalysis(a.type)}
+                onClick={() => onOpenAnalysisDetails(a.analysisId)}
               >
                 <img
                   src={a.fileUrl}
@@ -125,6 +131,7 @@ export default function AnalysisSidebar({
             text-stone-700 py-2 text-sm
             hover:bg-white transition
           "
+          onClick={onOpenAnalysisList}
         >
           View all
         </button>

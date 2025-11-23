@@ -71,7 +71,7 @@ export default function ChatSidebar({
   };
 
   return (
-    <aside className="w-72 bg-white/80 border-r border-stone-200 p-4 hidden md:flex flex-col backdrop-blur-sm">
+    <aside className="w-[340px] h-full overflow-y-auto bg-white/70 border-l border-white/40">
       {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-medium text-stone-800">Chats</h3>

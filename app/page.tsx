@@ -23,6 +23,8 @@ import type {
 } from "./types";
 import { products as initialProducts } from "./data/products";
 import AnalysisUploadModal from "./components/analysis/AnalysisUploadModal";
+import AnalysisDetailModal from "./components/analysis/AnalysisDetailsModal";
+import AnalysisListModal from "./components/analysis/AnalysisListModal";
 
 const initialMessage: Message = {
   author: "ai",
@@ -61,7 +63,19 @@ const App: React.FC = () => {
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
   const [analysisType, setAnalysisType] = useState<string | null>(null);
   const [analyses, setAnalyses] = useState<any[]>([]); // recent analyses
+  const [analysisDetail, setAnalysisDetail] = useState(null);
+  const [showAnalysisList, setShowAnalysisList] = useState(false);
 
+  const handleOpenAnalysisDetails = (id: string) => {
+    const found = recentAnalyses.find((a) => a.analysisId === id);
+    if (found) {
+      setAnalysisDetail(found);
+      setShowAnalysisList(false);
+    }
+  };
+  const handleOpenAnalysisList = () => {
+    setShowAnalysisList(true);
+  };
   // load user + chats
   useEffect(() => {
     const userEmail = session?.user?.email ?? "";
@@ -365,14 +379,12 @@ const App: React.FC = () => {
     // Create a user-friendly + vector-search-friendly prompt
     const text = `
 Here's my saved analysis: **${analysis.title || analysis.type}**
-Image: ${analysis.fileUrl}
-
 Summary:
 ${analysis.aiResult?.summary || "No summary available."}
 
 Optimized prompt for Rasphia:
 ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
-  `.trim();
+  find some products for this`.trim();
 
     // Insert as a user message
     setMessages((prev) => [...prev, { author: "user", text }]);
@@ -561,7 +573,7 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
 
   // 🪶 Default Chat UI
   return (
-    <div className="flex min-h-screen bg-[#F8F4EF] text-stone-900">
+    <div className="flex h-screen bg-[#F8F4EF] text-stone-900 overflow-hidden">
       {/* LEFT SIDEBAR */}
       <ChatSidebar
         userEmail={currentUser.email}
@@ -572,7 +584,7 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
       />
 
       {/* RIGHT MAIN CHAT PANEL */}
-      <div className="flex-1 relative min-h-screen">
+      <div className="flex-1 h-full overflow-y-auto relative">
         <div className="pointer-events-none absolute inset-0">
           <div
             className="absolute -top-16 left-10 h-72 w-72 rounded-[45%] 
@@ -590,9 +602,12 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
         <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 md:px-6">
           {/* HEADER */}
           <header
-            className="flex flex-wrap items-center justify-between gap-4 
-        rounded-full border border-white/40 bg-white/60 
-        px-5 py-3 shadow-[0_10px_40px_rgba(0,0,0,0.04)] backdrop-blur-lg"
+            className="
+    sticky top-0 z-40
+    flex flex-wrap items-center justify-between gap-4 
+    rounded-full border border-white/40 bg-white/70 
+    px-5 py-3 shadow-[0_10px_40px_rgba(0,0,0,0.04)] backdrop-blur-lg
+  "
           >
             <button
               onClick={handleLogout}
@@ -674,17 +689,32 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
         onOpenAnalysis={handleOpenAnalysis}
         onAttachToChat={handleAttachToChat}
         recentAnalyses={recentAnalyses}
+        onOpenAnalysisDetails={handleOpenAnalysisDetails}
+        onOpenAnalysisList={handleOpenAnalysisList}
       />
 
       <AnalysisUploadModal
         isOpen={isAnalysisOpen}
         onClose={() => setIsAnalysisOpen(false)}
         onAnalysisComplete={(analysis) => {
-          setAnalyses((prev) => [analysis, ...prev]); // store new analysis
+          setRecentAnalyses((prev) => [analysis, ...prev]); // store new analysis
         }}
         userEmail={currentUser.email}
         type={analysisType}
       />
+      {analysisDetail && (
+        <AnalysisDetailModal
+          analysis={analysisDetail}
+          onClose={() => setAnalysisDetail(null)}
+        />
+      )}
+      {showAnalysisList && (
+        <AnalysisListModal
+          analyses={recentAnalyses}
+          onClose={() => setShowAnalysisList(false)}
+          onOpenAnalysisDetails={handleOpenAnalysisDetails}
+        />
+      )}
     </div>
   );
 };

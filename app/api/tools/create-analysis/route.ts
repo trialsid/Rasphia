@@ -1,93 +1,180 @@
 // app/api/tools/create-analysis/route.ts
 import { NextResponse } from "next/server";
 import sharp from "sharp";
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuid } from "uuid";
 import clientPromise from "@/app/lib/mongodb";
-import { uploadToVercelBlob } from "@/utils/storage";
-import { embedQuery } from "@/app/lib/queryEmbeddings";
+import { put } from "@vercel/blob";
 import { GoogleGenAI } from "@google/genai";
+import {
+  BASE_RULES,
+  SKIN_RULES,
+  HAIR_RULES,
+  BODY_RULES,
+  PRODUCT_RULES,
+  OUTPUT_FORMATS,
+} from "@/utils/promptModules";
 
-export const runtime = "nodejs"; // Sharp needs Node
+export const runtime = "nodejs";
 
+// ----------------------------
+// FIXED: TYPE-SAFE TOOL MAPS
+// ----------------------------
+const TOOL_RULE_MAP: Record<
+  "skin" | "hair" | "body" | "similar" | string,
+  string
+> = {
+  skin: SKIN_RULES,
+  hair: HAIR_RULES,
+  body: BODY_RULES,
+  similar: PRODUCT_RULES,
+  default: "",
+};
+
+const TOOL_OUTPUT_MAP: Record<
+  "skin" | "hair" | "body" | "similar" | string,
+  string
+> = {
+  skin: OUTPUT_FORMATS.skin,
+  hair: OUTPUT_FORMATS.hair,
+  body: OUTPUT_FORMATS.body,
+  similar: OUTPUT_FORMATS.similar,
+  default: OUTPUT_FORMATS.default,
+};
+
+// ----------------------------
+// PROMPT BUILDER
+// ----------------------------
+function buildPrompt(type: string) {
+  return `
+${BASE_RULES}
+
+${TOOL_RULE_MAP[type] || TOOL_RULE_MAP.default}
+
+Return ONLY JSON in this shape:
+${TOOL_OUTPUT_MAP[type] || TOOL_OUTPUT_MAP.default}
+  `;
+}
+
+// ----------------------------
+// MAIN ROUTE HANDLER
+// ----------------------------
 export async function POST(req: Request) {
-  const userEmail = req.headers.get("x-user-email");
-  if (!userEmail)
-    return NextResponse.json({ error: "Missing user email" }, { status: 401 });
+  try {
+    const form = await req.formData();
+    const userEmail = req.headers.get("x-user-email");
+    if (!userEmail)
+      return NextResponse.json(
+        { error: "Missing user email" },
+        { status: 401 }
+      );
 
-  // 💡 Parse multipart form-data WITHOUT formidable
-  const form = await req.formData();
+    const file = form.get("file") as File | null;
+    const type = String(form.get("tool") || "skin");
+    const blur = form.get("blurSensitive") === "true";
 
-  const file = form.get("file") as File | null;
-  const tool = (form.get("tool") as string) || "custom";
-  const notes = (form.get("notes") as string) || "";
+    if (!file || !userEmail) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
 
-  if (!file)
-    return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+    // ----------------------------
+    // IMAGE → BUFFER → COMPRESS
+    // ----------------------------
+    const arrBuff = await file.arrayBuffer();
+    let buffer = Buffer.from(arrBuff) as any;
 
-  // Validate file type
-  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    buffer = await sharp(buffer).rotate().jpeg({ quality: 85 }).toBuffer();
+
+    // ----------------------------
+    // SAVE TO VERCEL BLOB
+    // ----------------------------
+    const blobName = `analysis-${uuid()}.jpg`;
+    const uploaded = await put(blobName, buffer, {
+      access: "public",
+      contentType: "image/jpeg",
+    });
+
+    const fileUrl = uploaded.url;
+
+    // ----------------------------
+    // PREPARE IMAGE FOR GEMINI
+    // inlineData REQUIRED
+    // ----------------------------
+    const base64Image = buffer.toString("base64");
+
+    const finalPrompt = buildPrompt(type);
+
+    // ----------------------------
+    // GEMINI CALL (WORKING)
+    // ----------------------------
+    let parsedResult: any = {};
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+      const result = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: finalPrompt },
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: base64Image,
+                },
+              },
+            ],
+          },
+        ],
+      });
+
+      const raw = result.text as string;
+      const cleaned = raw.replace(/```json|```/g, "").trim();
+
+      parsedResult = JSON.parse(cleaned);
+      console.log("The analysisi is:", raw, cleaned, parsedResult);
+    } catch (err) {
+      console.error("Gemini error:", err);
+      parsedResult = {
+        summary: "Could not analyze the image.",
+        suggestions: "Please try uploading a clearer image.",
+        optimizedPrompt: "Analyze the image for general patterns only.",
+      };
+    }
+
+    // ----------------------------
+    // SAVE TO MONGODB
+    // ----------------------------
+    const client = await clientPromise;
+    const db = client.db("rasphia");
+
+    const analysisId = uuid();
+    const now = new Date().toISOString();
+
+    const doc = {
+      analysisId,
+      userEmail,
+      type,
+      fileUrl,
+      blurSensitive: blur,
+      aiResult: parsedResult,
+      chatRefs: [],
+      createdAt: now,
+      updatedAt: now,
+      title: `${type} analysis (${now.slice(0, 10)})`,
+    };
+
+    await db.collection("analyses").insertOne(doc);
+
+    return NextResponse.json({ ok: true, analysis: doc });
+  } catch (err) {
+    console.error("Create-analysis fatal error:", err);
     return NextResponse.json(
-      { error: "Unsupported image format" },
-      { status: 400 }
+      { error: "Internal server error" },
+      { status: 500 }
     );
   }
-
-  // Convert to ArrayBuffer → Buffer
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  // Sanitize / compress
-  const sanitized = await sharp(buffer)
-    .rotate()
-    .jpeg({ quality: 90 })
-    .toBuffer();
-
-  // Upload to Vercel Blob
-  const fileUrl = await uploadToVercelBlob(sanitized, "image/jpeg");
-
-  // Generate embedding
-  const prompt = `Analyse this image in context of ${tool}. Notes: ${
-    notes || "none"
-  }`;
-  const embedding = await embedQuery(prompt).catch(() => null);
-
-  // Gemini analysis
-  let aiResult = null;
-  try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: [{ text: prompt }, { text: `Image: ${fileUrl}` }],
-    });
-    aiResult = { text: result.text };
-    console.log(JSON.stringify(aiResult));
-  } catch (err) {
-    console.error("Gemini error:", err);
-  }
-
-  // Save to DB
-  const now = new Date().toISOString();
-  const analysisId = uuidv4();
-
-  const client = await clientPromise;
-  const db = client.db("rasphia");
-
-  const doc = {
-    analysisId,
-    userEmail,
-    tool,
-    fileUrl,
-    prompt,
-    embedding,
-    aiResult,
-    notes,
-    chatRefs: [],
-    createdAt: now,
-    updatedAt: now,
-    title: `${tool} analysis (${now.slice(0, 10)})`,
-  };
-
-  await db.collection("analyses").insertOne(doc);
-
-  return NextResponse.json({ ok: true, analysis: doc });
 }
