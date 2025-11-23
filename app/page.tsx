@@ -10,6 +10,7 @@ import ReviewModal from "./components/ReviewModal";
 import SignInPopup from "./components/SignInPopup";
 import ProfileIcon from "./components/icons/ProfileIcon";
 import ChatSidebar from "@/app/components/ChatSidebar";
+import AnalysisSidebar from "./components/analysis/AnalysisSidebar";
 
 import type {
   Message,
@@ -17,13 +18,19 @@ import type {
   Order,
   CheckoutCustomer,
   UserProfile,
+  Review,
+  ChatSession,
 } from "./types";
 import { products as initialProducts } from "./data/products";
+import AnalysisUploadModal from "./components/analysis/AnalysisUploadModal";
 
 const initialMessage: Message = {
   author: "ai",
   text: "Hello, I’m Rasphia — your personal shopping concierge. What would you like to explore today?",
 };
+
+const DEMO_IMG_PATH =
+  '/mnt/data/A_logo_for_a_brand_named_"Rasphia"_is_displayed_on.png';
 
 const initialUser: UserProfile = {
   name: "",
@@ -48,6 +55,12 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile>(initialUser);
   const [reviewingOrder, setReviewingOrder] = useState<Order | null>(null);
   const [isSignInPopupOpen, setIsSignInPopupOpen] = useState(false);
+  const [recentAnalyses, setRecentAnalyses] = useState<any[]>([]);
+  // controlled draft for ChatInput (so AnalysisSidebar can insert text)
+  const [draft, setDraft] = useState<string>("");
+  const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
+  const [analysisType, setAnalysisType] = useState<string | null>(null);
+  const [analyses, setAnalyses] = useState<any[]>([]); // recent analyses
 
   // load user + chats
   useEffect(() => {
@@ -57,11 +70,24 @@ const App: React.FC = () => {
 
     const loadUserData = async () => {
       try {
-        const [profileRes, ordersRes, chatsRes] = await Promise.all([
-          fetch(`/api/user/get-profile?email=${encodeURIComponent(userEmail)}`),
-          fetch(`/api/orders?email=${encodeURIComponent(userEmail)}`),
-          fetch(`/api/chats/list?email=${encodeURIComponent(userEmail)}`),
-        ]);
+        const [profileRes, ordersRes, chatsRes, analysesRes] =
+          await Promise.all([
+            fetch(
+              `/api/user/get-profile?email=${encodeURIComponent(userEmail)}`
+            ),
+            fetch(`/api/orders?email=${encodeURIComponent(userEmail)}`),
+            fetch(`/api/chats/list?email=${encodeURIComponent(userEmail)}`),
+            fetch(
+              `/api/tools/list-analyses?email=${encodeURIComponent(userEmail)}`
+            ),
+          ]);
+        // analyses endpoint might not be present in early dev; guard it
+        let analyses: any[] = [];
+        try {
+          if (analysesRes?.ok) analyses = await analysesRes.json();
+        } catch (e) {
+          console.warn("analyses fetch failed:", e);
+        }
 
         if (!profileRes.ok || !ordersRes.ok || !chatsRes.ok) {
           throw new Error("Failed to fetch user data or orders or chats");
@@ -96,6 +122,23 @@ const App: React.FC = () => {
           setChatSessions([newChat]);
           setActiveChatId(newChat._id);
           setMessages(newChat.messages || [initialMessage]);
+        }
+        // set a demo analysis if none found to help dev flow:
+        if (!analyses || analyses.length === 0) {
+          setRecentAnalyses([
+            {
+              analysisId: "demo-analysis-1",
+              title: "Demo analysis",
+              fileUrl: DEMO_IMG_PATH,
+              createdAt: new Date().toISOString(),
+              prompt: "Demo prompt: show me product suggestions for this item",
+              aiResult: {
+                text: "Demo analysis: Use this to test insert/paste flow.",
+              },
+            },
+          ]);
+        } else {
+          setRecentAnalyses(analyses);
         }
       } catch (error) {
         console.error("Error loading user data:", error);
@@ -262,6 +305,81 @@ const App: React.FC = () => {
     },
     [messages]
   );
+
+  // Integration hooks for AnalysisSidebar
+  // Insert a generated prompt into the chat input (controlled)
+  const handleInsertPrompt = (prompt: string) => {
+    setDraft(prompt);
+    // optionally focus the chat input — ChatInput should implement focus via ref if you want it.
+  };
+
+  // Open an analysis or open upload modal — here we will open a viewer (simple behavior)
+  /*const handleOpenAnalysis = async (idOrTool: string) => {
+    // if id is an analysisId, open the analysis viewer (profile)
+    if (idOrTool && idOrTool.startsWith("demo-analysis-")) {
+      // demo click: open profile view for now
+      setIsProfileVisible(true);
+      // you can also route to /profile#analysisId
+      return;
+    }
+
+    // if it's a tool name (skin, hair, similar), open a simple upload modal flow.
+    // For now, open the profile to show demo flow. Later we will add a modal.
+    setIsProfileVisible(true);
+  };*/
+  const handleOpenAnalysis = (type: string) => {
+    setAnalysisType(type);
+    setIsAnalysisOpen(true);
+  };
+  const handleAnalysisComplete = (saved: any) => {
+    // Add to recent list (UI).
+    setRecentAnalyses((prev) => [saved, ...prev]);
+
+    // Optionally auto-insert into chat:
+    setMessages((prev) => [
+      ...prev,
+      {
+        author: "ai",
+        text: `📎 Attached analysis ready.\n\n**${
+          saved.title || saved.type
+        }**\n\nType: ${
+          saved.type
+        }\nUse "Insert into chat" to inject the optimized prompt.`,
+      },
+    ]);
+  };
+
+  const handleTriggerAnalysis = (type: string) => {
+    setAnalysisType(type);
+    setIsAnalysisOpen(true);
+  };
+
+  // Attach-to-chat helper when clicking "Attach" in the sidebar viewer (optional)
+  const handleAttachToChat = async (analysisId: string) => {
+    const analysis = recentAnalyses.find((a) => a.analysisId === analysisId);
+    if (!analysis) {
+      console.warn("Analysis not found:", analysisId);
+      return;
+    }
+
+    // Create a user-friendly + vector-search-friendly prompt
+    const text = `
+Here's my saved analysis: **${analysis.title || analysis.type}**
+Image: ${analysis.fileUrl}
+
+Summary:
+${analysis.aiResult?.summary || "No summary available."}
+
+Optimized prompt for Rasphia:
+${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
+  `.trim();
+
+    // Insert as a user message
+    setMessages((prev) => [...prev, { author: "user", text }]);
+
+    // Auto-send to AI
+    await handleSendMessage(text);
+  };
 
   // 🟢 Auth handlers
   const handleLogin = () => setIsSignInPopupOpen(true);
@@ -551,6 +669,22 @@ const App: React.FC = () => {
           )}
         </div>
       </div>
+      {/* RIGHT: Analysis Sidebar */}
+      <AnalysisSidebar
+        onOpenAnalysis={handleOpenAnalysis}
+        onAttachToChat={handleAttachToChat}
+        recentAnalyses={recentAnalyses}
+      />
+
+      <AnalysisUploadModal
+        isOpen={isAnalysisOpen}
+        onClose={() => setIsAnalysisOpen(false)}
+        onAnalysisComplete={(analysis) => {
+          setAnalyses((prev) => [analysis, ...prev]); // store new analysis
+        }}
+        userEmail={currentUser.email}
+        type={analysisType}
+      />
     </div>
   );
 };
