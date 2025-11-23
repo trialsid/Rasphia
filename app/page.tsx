@@ -1,7 +1,6 @@
 "use client";
 import React, { useState, useCallback, useEffect } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
-
 import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
 import LandingPage from "./components/LandingPage";
@@ -10,6 +9,7 @@ import ProfilePage from "./components/ProfilePage";
 import ReviewModal from "./components/ReviewModal";
 import SignInPopup from "./components/SignInPopup";
 import ProfileIcon from "./components/icons/ProfileIcon";
+import ChatSidebar from "@/app/components/ChatSidebar";
 
 import type {
   Message,
@@ -17,14 +17,12 @@ import type {
   Order,
   CheckoutCustomer,
   UserProfile,
-  Review,
 } from "./types";
-
 import { products as initialProducts } from "./data/products";
 
 const initialMessage: Message = {
   author: "ai",
-  text: "Hello, I'm Rasphia. I blend taste with thought to help you find the perfect gift or perfume. Who is this for, and what's the occasion?",
+  text: "Hello, I’m Rasphia — your personal shopping concierge. What would you like to explore today?",
 };
 
 const initialUser: UserProfile = {
@@ -40,6 +38,8 @@ const App: React.FC = () => {
   const isAuthenticated = !!session?.user;
 
   const [messages, setMessages] = useState<Message[]>([initialMessage]);
+  const [chatSessions, setChatSessions] = useState<any[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
@@ -49,28 +49,28 @@ const App: React.FC = () => {
   const [reviewingOrder, setReviewingOrder] = useState<Order | null>(null);
   const [isSignInPopupOpen, setIsSignInPopupOpen] = useState(false);
 
-  // 🔹 Load user + orders from MongoDB when session is ready
+  // load user + chats
   useEffect(() => {
     const userEmail = session?.user?.email ?? "";
     const userName = session?.user?.name ?? "";
-
-    if (!userEmail) return; // Exit early if no email (user not loaded yet)
+    if (!userEmail) return;
 
     const loadUserData = async () => {
       try {
-        const [profileRes, ordersRes] = await Promise.all([
+        const [profileRes, ordersRes, chatsRes] = await Promise.all([
           fetch(`/api/user/get-profile?email=${encodeURIComponent(userEmail)}`),
           fetch(`/api/orders?email=${encodeURIComponent(userEmail)}`),
+          fetch(`/api/chats/list?email=${encodeURIComponent(userEmail)}`),
         ]);
 
-        if (!profileRes.ok || !ordersRes.ok) {
-          throw new Error("Failed to fetch user data or orders");
+        if (!profileRes.ok || !ordersRes.ok || !chatsRes.ok) {
+          throw new Error("Failed to fetch user data or orders or chats");
         }
 
         const profile = await profileRes.json();
         const userOrders = await ordersRes.json();
+        const chats = await chatsRes.json();
 
-        // ✅ Always have fallbacks for missing data
         setCurrentUser({
           name: profile?.name || userName,
           email: profile?.email || userEmail,
@@ -80,13 +80,123 @@ const App: React.FC = () => {
         });
 
         setOrders(userOrders || []);
+        setChatSessions(chats || []);
+
+        if (chats?.length) {
+          setActiveChatId(chats[0]._id);
+          setMessages(chats[0].messages || [initialMessage]);
+        } else {
+          // create initial chat if none
+          const res = await fetch("/api/chats/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: userEmail, initialMessage }),
+          });
+          const newChat = await res.json();
+          setChatSessions([newChat]);
+          setActiveChatId(newChat._id);
+          setMessages(newChat.messages || [initialMessage]);
+        }
       } catch (error) {
-        console.error("❌ Error loading user data:", error);
+        console.error("Error loading user data:", error);
       }
     };
 
     loadUserData();
   }, [session]);
+
+  // select chat
+  const handleSelectChat = async (chatId: string) => {
+    if (!chatId) return;
+    setActiveChatId(chatId);
+    const res = await fetch(`/api/chats/get?id=${chatId}`);
+    if (!res.ok) return;
+    const chat = await res.json();
+    setMessages(chat.messages || [initialMessage]);
+  };
+
+  // new chat
+  const handleNewChat = async () => {
+    const res = await fetch("/api/chats/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: currentUser.email, initialMessage }),
+    });
+    const chat = await res.json();
+    setChatSessions((s) => [chat, ...s]);
+    setActiveChatId(chat._id);
+    setMessages(chat.messages || [initialMessage]);
+  };
+
+  // delete chat
+  const handleDeleteChat = async (chatId: string) => {
+    await fetch("/api/chats/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId }),
+    });
+    setChatSessions((s) => s.filter((c) => c._id !== chatId));
+    if (activeChatId === chatId) {
+      if (chatSessions.length > 1) {
+        const next = chatSessions.find((c: any) => c._id !== chatId);
+        if (next) handleSelectChat(next._id);
+      } else {
+        handleNewChat();
+      }
+    }
+  };
+
+  // send message: uses your existing /api/curate and also saves message into the chat
+  const handleSendMessage = useCallback(
+    async (text: string) => {
+      if (!text.trim()) return;
+      const userMessage: Message = {
+        author: "user",
+        text,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      setIsLoading(true);
+
+      try {
+        // Post to curate with chat context + chatId + userEmail
+        const res = await fetch("/api/curate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chatHistory: [...messages, userMessage],
+            chatId: activeChatId,
+            userEmail: currentUser.email,
+          }),
+        });
+
+        if (!res.ok) throw new Error("Rasphia response failed");
+
+        const aiMessage = await res.json();
+        // response contains aiMessage and chatId
+        setMessages((prev) => [...prev, aiMessage]);
+        // update sessions list (brief)
+        const chatsRes = await fetch(
+          `/api/chats/list?email=${encodeURIComponent(currentUser.email)}`
+        );
+        const chats = await chatsRes.json();
+        setChatSessions(chats || []);
+      } catch (err) {
+        console.error("Rasphia AI error:", err);
+        setMessages((prev) => [
+          ...prev,
+          {
+            author: "ai",
+            text: "Hmm, I'm having trouble right now — please try again.",
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [messages, activeChatId, currentUser.email]
+  );
 
   // 💬 AI chat handler
   // 💬 AI chat handler (streaming enabled)
@@ -144,48 +254,6 @@ const App: React.FC = () => {
           {
             author: "ai",
             text: "I'm having trouble connecting right now. Please try again later.",
-          },
-        ]);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [messages]
-  );
-  const handleSendMessage = useCallback(
-    async (text: string) => {
-      if (!text.trim()) return;
-
-      // Add user message to chat
-      const userMessage: Message = { author: "user", text };
-      setMessages((prev) => [...prev, userMessage]);
-      setIsLoading(true);
-
-      try {
-        // Send message to Rasphia’s backend (RAG route)
-        const res = await fetch("/api/curate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chatHistory: [...messages, userMessage],
-          }),
-        });
-
-        if (!res.ok) {
-          throw new Error(`Rasphia response failed: ${res.statusText}`);
-        }
-
-        const aiResponse: Message = await res.json();
-
-        // Add AI response to the chat
-        setMessages((prev) => [...prev, aiResponse]);
-      } catch (error) {
-        console.error("❌ Rasphia AI error:", error);
-        setMessages((prev) => [
-          ...prev,
-          {
-            author: "ai",
-            text: "Hmm, I’m having a bit of trouble thinking right now. Could you please try again?",
           },
         ]);
       } finally {
@@ -375,83 +443,113 @@ const App: React.FC = () => {
 
   // 🪶 Default Chat UI
   return (
-    <div className="relative min-h-screen bg-[#F8F4EF] text-stone-900">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-16 left-10 h-72 w-72 rounded-[45%] bg-gradient-to-br from-[#FBE8D1] via-[#F7CFB8] to-[#F2B9A6] opacity-60 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-96 w-80 rounded-[60%] bg-gradient-to-br from-[#301B16] via-[#563223] to-[#A16443] opacity-50 blur-[160px]" />
-      </div>
-      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 md:px-6">
-        <header className="flex flex-wrap items-center justify-between gap-4 rounded-full border border-white/50 bg-white/70 px-5 py-3 shadow-[0_10px_40px_rgba(0,0,0,0.04)] backdrop-blur">
-          <button
-            onClick={handleLogout}
-            className="inline-flex items-center gap-2 rounded-full border border-stone-200 px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-white"
-            style={{ borderRadius: "999px" }}
-          >
-            Sign Out
-          </button>
-          <div className="text-center">
-            <p className="text-xs uppercase tracking-[0.5em] text-stone-400">
-              Rasphia
-            </p>
-            <p className="font-serif text-xl text-stone-900">
-              Concierge Session
-            </p>
-          </div>
-          <button
-            onClick={handleShowProfile}
-            className="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white/70 p-2 text-stone-500 transition hover:bg-white"
-            aria-label="View Profile"
-            style={{ borderRadius: "999px" }}
-          >
-            <ProfileIcon />
-          </button>
-        </header>
+    <div className="flex min-h-screen bg-[#F8F4EF] text-stone-900">
+      {/* LEFT SIDEBAR */}
+      <ChatSidebar
+        userEmail={currentUser.email}
+        onSelect={handleSelectChat}
+        activeId={activeChatId}
+        onNew={handleNewChat}
+        onDelete={handleDeleteChat}
+      />
 
-        <main className="mt-6 flex-1 min-h-0 overflow-hidden">
-          <div className="relative flex h-full flex-col rounded-[36px] border border-white/50 bg-white/90 p-4 shadow-[0_25px_100px_rgba(0,0,0,0.08)]">
-            <div className="pointer-events-none absolute -top-6 right-4 h-40 w-40 rounded-full bg-gradient-to-br from-amber-200 via-rose-100 to-white blur-[70px] opacity-80" />
-            <div className="pointer-events-none absolute bottom-[-20px] left-[-10px] h-44 w-44 rounded-full bg-gradient-to-br from-[#2C1A13] via-[#4F2B1E] to-[#8E5637] blur-[90px] opacity-60" />
-            <div className="relative flex h-full min-h-0 flex-col rounded-[28px] bg-white/85 p-4 shadow-inner">
-              <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-semibold uppercase tracking-[0.4em] text-stone-400">
-                <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-4 py-1 text-amber-800">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Live
-                  concierge
-                </span>
-                <span className="text-stone-500">
-                  Signed in as {currentUser.name || session?.user?.name}
-                </span>
-              </div>
-              <div className="mt-4 flex flex-1 min-h-0 flex-col overflow-hidden rounded-[24px] border border-white/60 bg-white/75 p-4 shadow-lg shadow-white/60">
-                <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden">
-                  <ChatWindow
-                    messages={messages}
-                    isLoading={isLoading}
-                    onInitiateCheckout={handleInitiateCheckout}
-                    wishlist={currentUser.wishlist}
-                    onToggleWishlist={handleToggleWishlist}
-                    products={products}
-                  />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-2 pb-2">
-                    <div className="pointer-events-auto w-full max-w-3xl">
-                      <ChatInput
-                        onSendMessage={handleSendMessage}
-                        isLoading={isLoading}
-                      />
+      {/* RIGHT MAIN CHAT PANEL */}
+      <div className="flex-1 relative min-h-screen">
+        <div className="pointer-events-none absolute inset-0">
+          <div
+            className="absolute -top-16 left-10 h-72 w-72 rounded-[45%] 
+        bg-gradient-to-br from-[#FBE8D1] via-[#F7CFB8] to-[#F2B9A6] 
+        opacity-60 blur-3xl"
+          />
+
+          <div
+            className="absolute bottom-0 right-0 h-96 w-80 rounded-[60%] 
+        bg-gradient-to-br from-[#301B16] via-[#563223] to-[#A16443] 
+        opacity-50 blur-[160px]"
+          />
+        </div>
+
+        <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 md:px-6">
+          {/* HEADER */}
+          <header
+            className="flex flex-wrap items-center justify-between gap-4 
+        rounded-full border border-white/40 bg-white/60 
+        px-5 py-3 shadow-[0_10px_40px_rgba(0,0,0,0.04)] backdrop-blur-lg"
+          >
+            <button
+              onClick={handleLogout}
+              className="inline-flex items-center gap-2 rounded-full 
+            border border-stone-200 px-4 py-2 text-sm 
+            font-medium text-stone-700 hover:bg-white transition"
+            >
+              Sign Out
+            </button>
+
+            <div className="text-center">
+              <p className="text-xs uppercase tracking-[0.5em] text-stone-400">
+                Rasphia
+              </p>
+              <p className="font-serif text-xl text-stone-900">
+                Concierge Session
+              </p>
+            </div>
+
+            <button
+              onClick={handleShowProfile}
+              className="inline-flex items-center justify-center rounded-full 
+            border border-stone-200 bg-white/70 p-2 
+            text-stone-500 hover:bg-white transition"
+              aria-label="View Profile"
+            >
+              <ProfileIcon />
+            </button>
+          </header>
+          <main className="mt-6 flex-1 min-h-0 overflow-hidden">
+            <div className="relative flex h-full flex-col rounded-[36px] border border-white/50 bg-white/90 p-4 shadow-[0_25px_100px_rgba(0,0,0,0.08)]">
+              <div className="pointer-events-none absolute -top-6 right-4 h-40 w-40 rounded-full bg-gradient-to-br from-amber-200 via-rose-100 to-white blur-[70px] opacity-80" />
+              <div className="pointer-events-none absolute bottom-[-20px] left-[-10px] h-44 w-44 rounded-full bg-gradient-to-br from-[#2C1A13] via-[#4F2B1E] to-[#8E5637] blur-[90px] opacity-60" />
+              <div className="relative flex h-full min-h-0 flex-col rounded-[28px] bg-white/85 p-4 shadow-inner">
+                <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-semibold uppercase tracking-[0.4em] text-stone-400">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-4 py-1 text-amber-800">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />{" "}
+                    Live concierge
+                  </span>
+                  <span className="text-stone-500">
+                    Signed in as {currentUser.name || session?.user?.name}
+                  </span>
+                </div>
+                <div className="mt-4 flex flex-1 min-h-0 flex-col overflow-hidden rounded-[24px] border border-white/60 bg-white/75 p-4 shadow-lg shadow-white/60">
+                  <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden">
+                    <ChatWindow
+                      messages={messages}
+                      isLoading={isLoading}
+                      onInitiateCheckout={handleInitiateCheckout}
+                      wishlist={currentUser.wishlist}
+                      onToggleWishlist={handleToggleWishlist}
+                      products={products}
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-2 pb-2">
+                      <div className="pointer-events-auto w-full max-w-3xl">
+                        <ChatInput
+                          onSendMessage={handleSendMessage}
+                          isLoading={isLoading}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </main>
+          </main>
 
-        {reviewingOrder && (
-          <ReviewModal
-            order={reviewingOrder}
-            onClose={handleCloseReview}
-            onSubmit={handleAddReview}
-          />
-        )}
+          {reviewingOrder && (
+            <ReviewModal
+              order={reviewingOrder}
+              onClose={handleCloseReview}
+              onSubmit={handleAddReview}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

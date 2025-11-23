@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
 import clientPromise from "@/app/lib/mongodb";
 import { embedQuery } from "@/app/lib/queryEmbeddings";
+import { ObjectId } from "mongodb";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export interface Product {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { chatHistory } = body;
+    const { chatHistory, chatId, userEmail } = body;
 
     if (!chatHistory || !Array.isArray(chatHistory)) {
       return NextResponse.json(
@@ -38,8 +39,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!userEmail) {
+      return NextResponse.json(
+        { error: "Missing user email for chat persistence." },
+        { status: 400 }
+      );
+    }
+
     const userMsg =
       [...chatHistory].reverse().find((m) => m.author === "user")?.text ?? "";
+
     if (!userMsg.trim()) {
       return NextResponse.json(
         { error: "User message is empty." },
@@ -57,17 +66,19 @@ export async function POST(req: NextRequest) {
 
     const ai = new GoogleGenAI({ apiKey });
 
-    // 🧭 Step 1: Vector search relevant products
+    // 🔍 Vector search for relevant products
     const queryEmbedding = await embedQuery(userMsg);
     const client = await clientPromise;
     const db = client.db("rasphia");
 
-    const results = await db
-      .collection("products")
+    const productsCollection = db.collection("products");
+    const chatsCollection = db.collection("chats");
+
+    const results = await productsCollection
       .aggregate([
         {
           $vectorSearch: {
-            index: "products_index", // must match Atlas index name
+            index: "products_index",
             path: "embedding",
             queryVector: queryEmbedding,
             numCandidates: 100,
@@ -90,50 +101,77 @@ export async function POST(req: NextRequest) {
       ])
       .toArray();
 
-    console.log("🧠 Vector search found", results.length, "matches");
-
     if (!results.length) {
       return NextResponse.json({
         author: "ai",
-        text: "Hmm, I couldn’t find any products for that right now. Could you tell me a bit more about what you’re looking for?",
+        text: "I couldn't find anything matching that yet — but tell me a bit more so I can refine your picks?",
       });
     }
-
-    // 🧾 Step 2: Prepare catalog context for Gemini
+    console.log("Vector search done", results);
+    // 🧾 Provide catalog context to Gemini
     const productContext = results
       .map(
         (p, i) =>
           `${i + 1}. ${p.name} — ${p.description} (Category: ${
-            p.category || "General"
-          }, ₹${p.price || "N/A"})`
+            p.category ?? "General"
+          }, ₹${p.price ?? "N/A"})`
       )
       .join("\n");
 
-    // 🪶 Step 3: System instructions
+    // ⭐ FINAL UPDATED SYSTEM PROMPT — GENERIC SHOPPING CONCIERGE
     const systemInstruction = `
-You are **Rasphia**, an elegant AI shopping curator.
-You combine taste ("Rasa") with thought ("Sophia") to help users find meaningful gifts and perfumes.
+You are **Rasphia**, an elegant AI shopping concierge for ALL categories:
+skincare, haircare, perfumes, grooming, beauty, wellness, gifts, home décor, room aesthetics, stationery, jewelry, accessories, gadgets, and lifestyle items.
 
-- Speak warmly, naturally, and with empathy.
-- Always weave sensory and emotional storytelling into your suggestions.
-- Suggest from the provided product list only.
-- Respond strictly in JSON format using the schema.
+Your persona:
+- Warm, premium, thoughtful, boutique-like.
+- Friendly and concise.
+- Use gentle sensory detail (e.g., "fresh citrus brightness", "warm amber trail") but not too poetic.
+
+Core rules:
+1. ALWAYS suggest up to **3 products** from the provided catalog list.
+2. ALWAYS include the product names in the "products" array.
+3. ALWAYS end your message with a friendly question.
+4. ALWAYS stay helpful—even if the user is vague, unclear, or casual.
+5. ALWAYS recommend products that match user intent, mood, concern, vibe, or budget.
+6. If no perfect match exists, still recommend the **closest 1–3 items**.
+7. Ask clarifying questions when needed.
+8. If comparison is requested, fill "comparisonTable".
+
+Reasoning rules:
+- Match user's intent first using keywords.
+- Filter by category relevance.
+- Then refine using:
+    • concern fit (acne → salicylic / niacinamide)
+    • vibe fit (bold → oud / amber)
+    • gender/context fit when needed
+    • budget if mentioned
+- Ensure chosen items feel cohesive.
+
+Fallback:
+- If user says "hi", "hello", or casual talk:
+  → respond warmly and recommend 1–3 of your most versatile picks.
+
+Formatting:
+- Respond ONLY in JSON.
+- NEVER hallucinate product names.
+- "products" MUST contain exact names from the catalog list.
 `;
 
-    // 🧩 Step 4: JSON schema for structured Gemini response
+    // 🧩 JSON Schema
     const schema = {
       type: Type.OBJECT,
       properties: {
         response: {
           type: Type.STRING,
           description:
-            "A warm, story-driven conversational reply ending with a question.",
+            "Warm, helpful message (2–5 sentences) that ends with a question.",
         },
         products: {
           type: Type.ARRAY,
-          description:
-            "Array of up to 3 product names you’re recommending, taken exactly from the product list.",
           items: { type: Type.STRING },
+          description:
+            "Up to 3 product names EXACTLY matching the catalog list.",
         },
         comparisonTable: {
           type: Type.OBJECT,
@@ -152,7 +190,7 @@ You combine taste ("Rasa") with thought ("Sophia") to help users find meaningful
       required: ["response", "products"],
     };
 
-    // 🧠 Step 5: Build final prompt
+    // 🧠 Build conversation context
     const conversationHistory = chatHistory
       .map((m) => `${m.author === "user" ? "User" : "Rasphia"}: ${m.text}`)
       .join("\n");
@@ -160,59 +198,92 @@ You combine taste ("Rasa") with thought ("Sophia") to help users find meaningful
     const prompt = `
 ${systemInstruction}
 
-Here are relevant products found from the catalog:
+Catalog matches:
 ${productContext}
 
 Conversation so far:
 ${conversationHistory}
 
-Respond strictly as valid JSON per schema.
+Respond strictly in JSON using the schema.
 `;
 
-    // ✨ Step 6: Call Gemini model
+    // ✨ Call Gemini
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash", // or "gemini-2.5-flash" if available
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
+        temperature: 0.7,
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0.7,
       },
     });
 
-    // 🧩 Step 7: Parse Gemini response safely
+    // 🧩 Parse Gemini JSON output
     let jsonResponse;
     try {
       jsonResponse = JSON.parse(response.text as string);
     } catch (err) {
-      console.error("❌ Failed to parse Gemini response:", response.text);
+      console.error("Gemini parse error:", response.text);
       return NextResponse.json(
         {
           author: "ai",
-          text: "I couldn’t quite form a clear response. Could you describe what kind of vibe or person this gift is for?",
+          text: "I’m here — could you rephrase that so I can help better?",
         },
         { status: 200 }
       );
     }
 
-    const recommendedProductNames: string[] = jsonResponse.products || [];
-    const recommendedProducts: Product[] = recommendedProductNames
+    // 🔎 Map product names → actual product objects
+    const recommendedNames: string[] = jsonResponse.products || [];
+    const recommendedProducts: Product[] = recommendedNames
       .map((name) => results.find((p) => p.name === name))
       .filter((p): p is Product => p !== undefined);
 
-    const message: Message = {
+    const aiMessage: Message = {
       author: "ai",
       text: jsonResponse.response,
-      products:
-        recommendedProducts.length > 0 ? recommendedProducts : undefined,
+      products: recommendedProducts.length ? recommendedProducts : undefined,
       comparisonTable: jsonResponse.comparisonTable,
     };
-    console.log("final message", message);
-    return NextResponse.json(message, { status: 200 });
+
+    // 🗃️ CHAT SESSION HANDLING (ChatGPT-style persistence)
+    let chatDoc;
+
+    if (!chatId) {
+      // Create new chat
+      const newChat = {
+        userEmail,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        messages: [...chatHistory, aiMessage],
+      };
+      const result = await chatsCollection.insertOne(newChat);
+      chatDoc = { ...newChat, _id: result.insertedId };
+    } else {
+      // Append to existing chat
+      await chatsCollection.updateOne(
+        { _id: new ObjectId(chatId) },
+        {
+          $push: { messages: aiMessage } as any,
+          $set: { updatedAt: new Date() },
+        }
+      );
+
+      chatDoc = await chatsCollection.findOne({ _id: new ObjectId(chatId) });
+    }
+    console.log("Final message", JSON.stringify(aiMessage));
+    // Return AI message + chatId (important for frontend)
+    return NextResponse.json(
+      {
+        ...aiMessage,
+        chatId: chatDoc?._id,
+      },
+      { status: 200 }
+    );
   } catch (error: any) {
     console.error("❌ Curate route error:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to generate AI response." },
+      { error: error?.message || "AI response failed." },
       { status: 500 }
     );
   }

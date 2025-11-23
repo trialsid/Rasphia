@@ -7,6 +7,9 @@ import {
   Star,
   ArrowRight,
   UserRound,
+  ShoppingBag,
+  Search,
+  HeartHandshake,
 } from "lucide-react";
 
 interface LandingPageProps {
@@ -20,89 +23,96 @@ const navLinks = [
 ];
 
 const stats = [
-  { label: "Briefs completed", value: "12k+" },
-  { label: "Partner ateliers", value: "150+" },
-  { label: "Delight score", value: "4.9" },
+  { label: "Curations delivered", value: "25k+" },
+  { label: "Brands & makers", value: "180+" },
+  { label: "Customer delight", value: "4.9" },
 ];
 
 const steps = [
   {
-    title: "Share the vibe",
-    description: "Tell us who and why in a sentence or two.",
+    title: "Share what you need",
+    description:
+      "Skin concerns, gift ideas, perfumes, decor, grooming — explain naturally.",
     icon: MessageCircle,
   },
   {
-    title: "Review 3 picks",
-    description: "Rasphia compares scents and keepsakes side by side.",
-    icon: Gift,
+    title: "Review curated picks",
+    description:
+      "Rasphia finds the best matches from the catalog, compares them, and tailors suggestions.",
+    icon: ShoppingBag,
   },
   {
-    title: "Send with ease",
-    description: "Payments, wrapping, and tracking handled quietly.",
+    title: "Shop effortlessly",
+    description:
+      "Add to cart, pay securely, and track orders — all from the chat.",
     icon: Clock3,
   },
 ];
 
+// ✨ Mixed-category demo products
 const curatedProducts = [
   {
-    name: "Velvet Oud Atelier",
-    caption: "Night-blooming extrait",
-    price: "₹6,800",
+    name: "Vitamin C Serum 10%",
+    caption: "Brightening daily serum",
+    price: "₹499",
+    accent: "from-[#FFE1C8] via-[#FFD4B3] to-[#F8C5AA]",
+  },
+  {
+    name: "Arabian Musk Perfume",
+    caption: "Long-lasting attar",
+    price: "₹349",
     accent: "from-[#3F1E17] via-[#714134] to-[#D9A38A]",
   },
   {
-    name: "Auric Brass Keepsake",
-    caption: "Hand-hammered bowl",
-    price: "₹4,200",
-    accent: "from-[#F4D69B] via-[#FBE9C9] to-[#FFF5E7]",
-  },
-  {
-    name: "Monsoon Ink Journal",
-    caption: "Indigo deckled notebook",
-    price: "₹1,950",
+    name: "Minimal Desk Lamp",
+    caption: "Warm ambient light",
+    price: "₹899",
     accent: "from-[#1B263B] via-[#374863] to-[#B6C8E8]",
   },
 ];
 
+// ✨ Generic testimonials
 const testimonials = [
   {
     quote:
-      "The brief felt like texting a friend who knows every boutique perfumer.",
+      "Felt like texting a friend who knows skincare, perfumes, and gifts equally well.",
     author: "Medha A.",
   },
   {
-    quote: "Our VIP gifts now feel intentional instead of rushed.",
+    quote: "Shopping is faster now — I just describe what I want.",
     author: "Kabir L.",
   },
   {
-    quote: "I met three indie makers through one conversation.",
+    quote: "I discovered new brands across categories effortlessly.",
     author: "Sahana V.",
   },
 ];
 
+// ✨ Brand logos remain generic
 const partnerLogos = [
-  "Maison Reva",
-  "Noir Atelier",
-  "Bombay Perfumery",
-  "Serein Studio",
-  "Ajmal Legacy",
+  "Clay Studio",
+  "Serenity Scents",
+  "GlowLab",
+  "EverHome",
+  "UrbanGroom",
 ];
 
+// ✨ Updated preview suggestions
 const previewSuggestions = [
   {
-    name: "Monsoon Memoir extrait",
-    notes: "Petrichor • Cardamom",
-    price: "₹6,100",
+    name: "Niacinamide 10% Serum",
+    notes: "Acne • Oil control",
+    price: "₹399",
   },
   {
-    name: "Kalai Brass Tray",
-    notes: "Monogram ready",
-    price: "₹4,500",
+    name: "Oud Wood Pocket Perfume",
+    notes: "Rich & long-lasting",
+    price: "₹250",
   },
   {
-    name: "Wildflower Syrup Duo",
-    notes: "Limited harvest",
-    price: "₹1,850",
+    name: "Pastel Ceramic Vase",
+    notes: "Room decor",
+    price: "₹550",
   },
 ];
 
@@ -117,6 +127,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
         </div>
 
         <div className="relative mx-auto max-w-6xl px-6 py-8 lg:px-8">
+          {/* NAV */}
           <nav className="flex flex-wrap items-center justify-between gap-4 rounded-full border border-white/50 bg-white/50 px-5 py-3 shadow-[0_10px_40px_rgba(0,0,0,0.05)] backdrop-blur">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-stone-900 to-stone-700 text-xl font-semibold text-[#F8F4EF]">
@@ -127,7 +138,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                   Rasphia
                 </p>
                 <p className="text-xs tracking-[0.4em] text-stone-400">
-                  Gift Atelier
+                  Shopping Concierge
                 </p>
               </div>
             </div>
@@ -152,25 +163,28 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             </button>
           </nav>
 
+          {/* HERO */}
           <header className="mt-16 grid gap-12 lg:grid-cols-2 lg:items-center">
             <div>
               <p className="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-1 text-sm font-medium text-stone-600">
-                <Sparkles className="h-4 w-4" /> Taste meets thought
+                <Sparkles className="h-4 w-4" /> Powered by AI curation
               </p>
               <h1 className="mt-6 font-serif text-5xl leading-tight text-stone-900 md:text-6xl">
-                Gift like you know them deeply.
+                Shop smarter. Just start chatting.
               </h1>
               <p className="mt-5 text-lg text-stone-600">
-                Rasphia is a chat-led curator for perfumes and keepsakes. Speak
-                naturally; receive a tight shortlist that feels human.
+                Skincare, perfumes, grooming, décor, accessories, gifts —
+                Rasphia curates the best picks for *anything* you're looking
+                for.
               </p>
+
               <div className="mt-8 flex flex-col gap-4 sm:flex-row">
                 <button
                   onClick={onLogin}
                   className="inline-flex items-center justify-center gap-3 rounded-full bg-stone-900 px-9 py-3 font-medium text-white shadow-lg shadow-stone-300/60 hover:-translate-y-0.5 hover:bg-stone-800 transition"
                   style={{ borderRadius: "999px" }}
                 >
-                  Begin your curation
+                  Start your concierge session
                   <ArrowRight className="h-5 w-5" />
                 </button>
                 <a
@@ -178,9 +192,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                   className="inline-flex items-center justify-center rounded-full border border-stone-300 px-9 py-3 text-stone-800 hover:bg-white"
                   style={{ borderRadius: "999px" }}
                 >
-                  See sample picks
+                  Browse sample picks
                 </a>
               </div>
+
               <div className="mt-10 grid gap-6 sm:grid-cols-3">
                 {stats.map((stat) => (
                   <div key={stat.label}>
@@ -193,6 +208,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
               </div>
             </div>
 
+            {/* CHAT PREVIEW UPDATED */}
             <div className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/90 p-6 shadow-2xl">
               <div className="pointer-events-none absolute inset-0 opacity-80">
                 <div className="absolute -top-16 right-4 h-48 w-48 rounded-full bg-gradient-to-br from-amber-200 via-rose-100 to-white blur-3xl" />
@@ -209,8 +225,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                       <UserRound className="h-4 w-4" />
                     </div>
                     <div className="rounded-2xl rounded-bl-sm bg-gradient-to-br from-[#2C1A13] via-[#3F2B22] to-[#6C4C3C] px-4 py-3 text-white shadow-lg shadow-stone-900/30">
-                      Looking for something that smells like first rain in Goa
-                      for a writer friend.
+                      I need a skincare routine for oily skin & also a birthday
+                      gift under ₹300.
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -218,15 +234,15 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                       <Sparkles className="h-4 w-4" />
                     </div>
                     <div className="rounded-2xl rounded-tl-sm bg-gradient-to-r from-white via-stone-50 to-amber-50 px-4 py-3 text-stone-800 shadow-md">
-                      Got it. Pairing petrichor-forward perfumes with warm brass
-                      objects. Here’s a clean shortlist.
+                      Got it! Sharing acne-friendly picks + cute affordable
+                      gifts. Here’s your curated shortlist.
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* SUGGESTED ITEMS */}
               <div className="relative mt-5 rounded-2xl border border-white/40 bg-gradient-to-br from-white/95 via-[#FFF6EA]/90 to-white/70 p-4 backdrop-blur">
-                <div className="pointer-events-none absolute -top-5 left-10 h-16 w-16 rounded-full bg-gradient-to-br from-amber-300 to-rose-200 blur-2xl opacity-70" />
-                <div className="pointer-events-none absolute bottom-0 right-0 h-36 w-24 rounded-full bg-gradient-to-b from-[#2D1A13]/30 to-transparent blur-2xl opacity-60" />
                 <div className="relative flex items-center justify-between text-sm font-semibold text-stone-600">
                   <p>Suggested items</p>
                   <span className="text-xs uppercase tracking-[0.3em] text-amber-600">
@@ -234,21 +250,19 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                   </span>
                 </div>
                 <div className="relative mt-4 grid gap-3">
-                  {previewSuggestions.map((suggestion) => (
+                  {previewSuggestions.map((s) => (
                     <div
-                      key={suggestion.name}
-                      className="flex items-center justify-between rounded-2xl border border-stone-100/60 bg-white/85 px-4 py-3 shadow-sm shadow-stone-200/50"
+                      key={s.name}
+                      className="flex items-center justify-between rounded-2xl border border-stone-100/60 bg-white/85 px-4 py-3 shadow-sm"
                     >
                       <div>
                         <p className="text-sm font-semibold text-stone-900">
-                          {suggestion.name}
+                          {s.name}
                         </p>
-                        <p className="text-xs text-stone-500">
-                          {suggestion.notes}
-                        </p>
+                        <p className="text-xs text-stone-500">{s.notes}</p>
                       </div>
                       <p className="text-sm font-medium text-stone-700">
-                        {suggestion.price}
+                        {s.price}
                       </p>
                     </div>
                   ))}
@@ -257,9 +271,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             </div>
           </header>
 
+          {/* PARTNER LOGOS */}
           <section className="mt-16 border-t border-white/50 py-8 text-center">
             <p className="text-xs uppercase tracking-[0.4em] text-stone-500">
-              Partner ateliers
+              Partner brands
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-6 text-sm font-medium text-stone-500">
               {partnerLogos.map((logo) => (
@@ -272,6 +287,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
         </div>
       </div>
 
+      {/* HOW IT WORKS */}
       <main className="mx-auto max-w-6xl px-6 py-20 lg:px-8">
         <section
           id="how-it-works"
@@ -283,7 +299,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                 Flow
               </p>
               <h2 className="mt-2 font-serif text-4xl text-stone-900">
-                Three simple beats.
+                Three effortless steps.
               </h2>
             </div>
             <button
@@ -295,6 +311,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
+
           <div className="mt-8 grid gap-6 md:grid-cols-3">
             {steps.map((step) => (
               <div
@@ -313,6 +330,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
           </div>
         </section>
 
+        {/* COLLECTIONS */}
         <section id="collections" className="mt-20">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -320,27 +338,28 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                 Preview
               </p>
               <h2 className="mt-1 font-serif text-4xl text-stone-900">
-                Fresh pairings this week.
+                Trending curations this week.
               </h2>
             </div>
             <a
               href="#"
               className="inline-flex items-center gap-1 rounded-full border border-amber-100 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 hover:text-amber-600"
             >
-              View library →
+              View full catalog →
             </a>
           </div>
+
           <div className="mt-8 grid gap-6 md:grid-cols-3">
             {curatedProducts.map((product) => (
               <div
                 key={product.name}
-                className="overflow-hidden rounded-3xl border border-stone-100 bg-white shadow-lg shadow-stone-200/60"
+                className="overflow-hidden rounded-3xl border border-stone-100 bg-white shadow-lg"
               >
                 <div
                   className={`h-56 w-full rounded-[40px] bg-gradient-to-br ${product.accent} p-6 text-white`}
                 >
                   <p className="text-xs uppercase tracking-[0.3em] text-white/70">
-                    Limited batch
+                    Curated pick
                   </p>
                   <p className="mt-4 text-2xl font-serif">{product.name}</p>
                   <p className="text-sm text-white/80">{product.caption}</p>
@@ -363,6 +382,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
           </div>
         </section>
 
+        {/* STORIES */}
         <section
           id="stories"
           className="mt-20 rounded-[32px] bg-[#1C140E] px-8 py-12 text-white"
@@ -373,7 +393,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                 Stories
               </p>
               <h2 className="mt-2 font-serif text-4xl leading-tight">
-                People come back for the intimacy.
+                Why people love shopping with Rasphia.
               </h2>
             </div>
             <a
@@ -384,21 +404,21 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
               <Star className="h-4 w-4 text-amber-300" />
             </a>
           </div>
+
           <div className="mt-8 grid gap-6 md:grid-cols-3">
-            {testimonials.map((testimonial) => (
+            {testimonials.map((t) => (
               <article
-                key={testimonial.author}
+                key={t.author}
                 className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white"
               >
-                <p className="text-white/80">“{testimonial.quote}”</p>
-                <p className="mt-4 text-sm font-semibold">
-                  {testimonial.author}
-                </p>
+                <p className="text-white/80">“{t.quote}”</p>
+                <p className="mt-4 text-sm font-semibold">{t.author}</p>
               </article>
             ))}
           </div>
         </section>
 
+        {/* FINAL CTA */}
         <section className="mt-20 rounded-[32px] bg-gradient-to-br from-[#2E1F1B] to-[#4B332A] px-8 py-12 text-white">
           <div className="grid gap-6 lg:grid-cols-2 lg:items-center">
             <div>
@@ -406,7 +426,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                 Ready?
               </p>
               <h2 className="mt-2 font-serif text-4xl leading-snug">
-                Start with a single sentence about who you're gifting.
+                Start by telling Rasphia what you're looking for.
               </h2>
             </div>
             <div className="flex flex-col gap-4">
@@ -419,9 +439,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                 <ArrowRight className="h-5 w-5" />
               </button>
               <p className="text-sm text-white/70">
-                Prefer a walkthrough?{" "}
+                Prefer guidance?{" "}
                 <a href="#" className="underline decoration-amber-200">
-                  Book a live demo
+                  Book a live walkthrough
                 </a>
                 .
               </p>
@@ -430,11 +450,14 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
         </section>
       </main>
 
+      {/* FOOTER */}
       <footer className="border-t border-stone-200 bg-white">
         <div className="mx-auto flex flex-col gap-8 px-6 py-12 text-sm text-stone-500 md:flex-row md:items-center md:justify-between lg:px-8">
           <div>
             <p className="font-serif text-2xl text-stone-900">Rasphia</p>
-            <p className="mt-1">Gifting rituals from South Asian ateliers.</p>
+            <p className="mt-1">
+              Your personal shopping concierge for everything you seek.
+            </p>
           </div>
           <div className="flex flex-wrap gap-6">
             <a href="#how-it-works" className="hover:text-stone-900">

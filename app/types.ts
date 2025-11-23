@@ -1,3 +1,25 @@
+// src/types/chat.ts
+import { ObjectId } from "mongodb";
+
+export type Author = "user" | "ai";
+
+export interface Message {
+  author: Author;
+  text: string;
+  products?: any[]; // keep flexible for now (Product[])
+  comparisonTable?: { headers: string[]; rows: string[][] };
+  createdAt?: string; // ISO string
+}
+
+export interface ChatSession {
+  _id?: ObjectId | string;
+  userEmail: string;
+  title?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: Message[];
+}
+
 export interface Product {
   name: string;
   category: "Perfume" | "Gift";
@@ -19,13 +41,13 @@ export interface ComparisonTableData {
   rows: string[][];
 }
 
-export interface Message {
+/*export interface Message {
   author: MessageAuthor;
   text: string;
   products?: Product[];
   comparisonTable?: ComparisonTableData;
 }
-
+*/
 export interface CheckoutCustomer {
   name: string;
   email: string;

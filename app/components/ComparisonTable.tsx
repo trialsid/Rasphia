@@ -2,10 +2,19 @@ import React from "react";
 import type { ComparisonTableData } from "../types";
 
 interface ComparisonTableProps {
-  tableData: ComparisonTableData;
+  tableData?: ComparisonTableData | null; // <-- allow undefined/null
 }
 
 const ComparisonTable: React.FC<ComparisonTableProps> = ({ tableData }) => {
+  // Prevent runtime crashes
+  if (
+    !tableData ||
+    !Array.isArray(tableData.headers) ||
+    !Array.isArray(tableData.rows)
+  ) {
+    return null; // Don't render anything if malformed
+  }
+
   return (
     <div className="w-full overflow-x-auto rounded-lg border border-stone-200 bg-white">
       <table className="min-w-full">

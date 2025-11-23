@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Rasphia",
-  description: "AI-powered gift curator",
+  description: "AI-powered shopping concierge",
 };
 
 // 👇 this is essential to avoid AsyncStorage bug
