@@ -1,6 +1,12 @@
 "use client";
 import React, { useState, useCallback, useEffect } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
 import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
 import LandingPage from "./components/LandingPage";
@@ -11,6 +17,9 @@ import SignInPopup from "./components/SignInPopup";
 import ProfileIcon from "./components/icons/ProfileIcon";
 import ChatSidebar from "@/app/components/ChatSidebar";
 import AnalysisSidebar from "./components/analysis/AnalysisSidebar";
+import AnalysisUploadModal from "./components/analysis/AnalysisUploadModal";
+import AnalysisDetailModal from "./components/analysis/AnalysisDetailsModal";
+import AnalysisListModal from "./components/analysis/AnalysisListModal";
 
 import type {
   Message,
@@ -22,9 +31,6 @@ import type {
   ChatSession,
 } from "./types";
 import { products as initialProducts } from "./data/products";
-import AnalysisUploadModal from "./components/analysis/AnalysisUploadModal";
-import AnalysisDetailModal from "./components/analysis/AnalysisDetailsModal";
-import AnalysisListModal from "./components/analysis/AnalysisListModal";
 
 const initialMessage: Message = {
   author: "ai",
@@ -65,6 +71,34 @@ const App: React.FC = () => {
   const [analyses, setAnalyses] = useState<any[]>([]); // recent analyses
   const [analysisDetail, setAnalysisDetail] = useState(null);
   const [showAnalysisList, setShowAnalysisList] = useState(false);
+
+  // Sidebar toggle state
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Handle responsive sidebar behavior
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (mobile) {
+        // Only auto-close on initial load/resize to mobile if user hasn't explicitly interacted?
+        // For simplicity, we can just ensure they don't block view on resize.
+        // But better UX: simple check on mount.
+      }
+    };
+    
+    // Initial check
+    if (window.innerWidth < 1024) {
+      setIsMobile(true);
+      setIsLeftSidebarOpen(false);
+      setIsRightSidebarOpen(false);
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleOpenAnalysisDetails = (id: string) => {
     const found = recentAnalyses.find((a) => a.analysisId === id);
@@ -170,6 +204,11 @@ const App: React.FC = () => {
     if (!res.ok) return;
     const chat = await res.json();
     setMessages(chat.messages || [initialMessage]);
+    
+    // On mobile, close sidebar after selection
+    if (isMobile) {
+      setIsLeftSidebarOpen(false);
+    }
   };
 
   // new chat
@@ -183,6 +222,7 @@ const App: React.FC = () => {
     setChatSessions((s) => [chat, ...s]);
     setActiveChatId(chat._id);
     setMessages(chat.messages || [initialMessage]);
+    if (isMobile) setIsLeftSidebarOpen(false);
   };
 
   // delete chat
@@ -255,92 +295,8 @@ const App: React.FC = () => {
     [messages, activeChatId, currentUser.email]
   );
 
-  // 💬 AI chat handler
-  // 💬 AI chat handler (streaming enabled)
-  const handleSendAgentMessage = useCallback(
-    async (text: string) => {
-      if (!text.trim()) return;
-
-      const userMessage: Message = { author: "user", text };
-      setMessages((prev) => [...prev, userMessage]);
-      setIsLoading(true);
-
-      try {
-        const res = await fetch("/api/curate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chatHistory: [...messages, userMessage],
-          }),
-        });
-
-        if (!res.ok || !res.body) throw new Error("Stream failed");
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let accumulatedText = "";
-        let aiMessage: Message = { author: "ai", text: "" };
-
-        // Add placeholder message for the AI
-        setMessages((prev) => [...prev, aiMessage]);
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-          accumulatedText += chunk;
-
-          // Update last AI message incrementally
-          setMessages((prev) => {
-            const updated = [...prev];
-            const lastIndex = updated.length - 1;
-            if (updated[lastIndex]?.author === "ai") {
-              updated[lastIndex] = {
-                ...updated[lastIndex],
-                text: accumulatedText,
-              };
-            }
-            return updated;
-          });
-        }
-      } catch (error) {
-        console.error("❌ AI streaming error:", error);
-        setMessages((prev) => [
-          ...prev,
-          {
-            author: "ai",
-            text: "I'm having trouble connecting right now. Please try again later.",
-          },
-        ]);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [messages]
-  );
-
   // Integration hooks for AnalysisSidebar
-  // Insert a generated prompt into the chat input (controlled)
-  const handleInsertPrompt = (prompt: string) => {
-    setDraft(prompt);
-    // optionally focus the chat input — ChatInput should implement focus via ref if you want it.
-  };
-
   // Open an analysis or open upload modal — here we will open a viewer (simple behavior)
-  /*const handleOpenAnalysis = async (idOrTool: string) => {
-    // if id is an analysisId, open the analysis viewer (profile)
-    if (idOrTool && idOrTool.startsWith("demo-analysis-")) {
-      // demo click: open profile view for now
-      setIsProfileVisible(true);
-      // you can also route to /profile#analysisId
-      return;
-    }
-
-    // if it's a tool name (skin, hair, similar), open a simple upload modal flow.
-    // For now, open the profile to show demo flow. Later we will add a modal.
-    setIsProfileVisible(true);
-  };*/
   const handleOpenAnalysis = (type: string) => {
     setAnalysisType(type);
     setIsAnalysisOpen(true);
@@ -356,16 +312,9 @@ const App: React.FC = () => {
         author: "ai",
         text: `📎 Attached analysis ready.\n\n**${
           saved.title || saved.type
-        }**\n\nType: ${
-          saved.type
-        }\nUse "Insert into chat" to inject the optimized prompt.`,
+        }**\n\nType: ${saved.type}\nUse "Insert into chat" to inject the optimized prompt.`, 
       },
     ]);
-  };
-
-  const handleTriggerAnalysis = (type: string) => {
-    setAnalysisType(type);
-    setIsAnalysisOpen(true);
   };
 
   // Attach-to-chat helper when clicking "Attach" in the sidebar viewer (optional)
@@ -380,7 +329,7 @@ const App: React.FC = () => {
     const text = `
 Here's my saved analysis: **${analysis.title || analysis.type}**
 Summary:
-${analysis.aiResult?.summary || "No summary available."}
+${analysis.aiResult?.summary || "No summary available."} 
 
 Optimized prompt for Rasphia:
 ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
@@ -391,6 +340,7 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
 
     // Auto-send to AI
     await handleSendMessage(text);
+    if (isMobile) setIsRightSidebarOpen(false);
   };
 
   // 🟢 Auth handlers
@@ -450,7 +400,7 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
         ...prev,
         {
           author: "ai",
-          text: `✅ Thank you for your purchase of ${checkoutProduct.name}! We'll keep you updated on shipping.`,
+          text: `✅ Thank you for your purchase of ${checkoutProduct.name}! We'll keep you updated on shipping.`, 
         },
       ]);
     } catch (err) {
@@ -571,134 +521,163 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
       />
     );
 
-  // 🪶 Default Chat UI
   return (
-    <div className="flex h-screen bg-[#F8F4EF] text-stone-900 overflow-hidden">
-      {/* LEFT SIDEBAR */}
-      <ChatSidebar
-        userEmail={currentUser.email}
-        onSelect={handleSelectChat}
-        activeId={activeChatId}
-        onNew={handleNewChat}
-        onDelete={handleDeleteChat}
-      />
+    <div className="relative h-screen w-full bg-[#F8F4EF] text-stone-900 font-sans overflow-hidden">
+       {/* Background Gradients & Blobs */}
+       <div className="absolute inset-0 bg-gradient-to-br from-[#FFF4E1] via-[#F8F1EA] to-[#F1E3D3] -z-20" />
+       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute -top-20 -left-20 h-96 w-96 rounded-full bg-[#F8DCC0] opacity-40 blur-3xl" />
+          <div className="absolute top-1/2 right-0 h-[500px] w-[500px] rounded-full bg-[#F0B9A3] opacity-30 blur-[100px]" />
+          <div className="absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-[#E5D0C5] opacity-40 blur-3xl" />
+       </div>
 
-      {/* RIGHT MAIN CHAT PANEL */}
-      <div className="flex-1 h-full overflow-y-auto relative">
-        <div className="pointer-events-none absolute inset-0">
-          <div
-            className="absolute -top-16 left-10 h-72 w-72 rounded-[45%] 
-        bg-gradient-to-br from-[#FBE8D1] via-[#F7CFB8] to-[#F2B9A6] 
-        opacity-60 blur-3xl"
+      <div className="flex h-full w-full p-2 lg:p-4 gap-2 lg:gap-4 relative">
+        
+        {/* LEFT PANEL - NAVIGATION */}
+        {/* Mobile Backdrop */}
+        {isLeftSidebarOpen && isMobile && (
+          <div 
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
+            onClick={() => setIsLeftSidebarOpen(false)}
           />
-
-          <div
-            className="absolute bottom-0 right-0 h-96 w-80 rounded-[60%] 
-        bg-gradient-to-br from-[#301B16] via-[#563223] to-[#A16443] 
-        opacity-50 blur-[160px]"
+        )}
+        
+        <div className={`
+          ${isLeftSidebarOpen ? 'flex' : 'hidden'}
+          fixed inset-y-2 left-2 z-50 w-[280px] h-[calc(100%-16px)] flex-col
+          lg:static lg:flex lg:h-full lg:w-[280px]
+          rounded-[32px] bg-white/60 backdrop-blur-xl border border-white/50 shadow-2xl lg:shadow-[0_8px_32px_rgba(0,0,0,0.04)] overflow-hidden transition-all duration-300
+        `}>
+          <ChatSidebar
+            userEmail={currentUser.email}
+            onSelect={handleSelectChat}
+            activeId={activeChatId}
+            onNew={handleNewChat}
+            onDelete={handleDeleteChat}
           />
         </div>
 
-        <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 md:px-6">
+        {/* CENTER PANEL - STAGE */}
+        <main className="flex-1 flex flex-col min-w-0 relative rounded-[32px] bg-white/80 backdrop-blur-xl border border-white/60 shadow-[0_20px_40px_rgba(0,0,0,0.06)] overflow-hidden">
           {/* HEADER */}
-          <header
-            className="
-    sticky top-0 z-40
-    flex flex-wrap items-center justify-between gap-4 
-    rounded-full border border-white/40 bg-white/70 
-    px-5 py-3 shadow-[0_10px_40px_rgba(0,0,0,0.04)] backdrop-blur-lg
-  "
-          >
-            <button
-              onClick={handleLogout}
-              className="inline-flex items-center gap-2 rounded-full 
-            border border-stone-200 px-4 py-2 text-sm 
-            font-medium text-stone-700 hover:bg-white transition"
-            >
-              Sign Out
-            </button>
-
-            <div className="text-center">
-              <p className="text-xs uppercase tracking-[0.5em] text-stone-400">
-                Rasphia
-              </p>
-              <p className="font-serif text-xl text-stone-900">
-                Concierge Session
-              </p>
-            </div>
-
-            <button
-              onClick={handleShowProfile}
-              className="inline-flex items-center justify-center rounded-full 
-            border border-stone-200 bg-white/70 p-2 
-            text-stone-500 hover:bg-white transition"
-              aria-label="View Profile"
-            >
-              <ProfileIcon />
-            </button>
-          </header>
-          <main className="mt-6 flex-1 min-h-0 overflow-hidden">
-            <div className="relative flex h-full flex-col rounded-[36px] border border-white/50 bg-white/90 p-4 shadow-[0_25px_100px_rgba(0,0,0,0.08)]">
-              <div className="pointer-events-none absolute -top-6 right-4 h-40 w-40 rounded-full bg-gradient-to-br from-amber-200 via-rose-100 to-white blur-[70px] opacity-80" />
-              <div className="pointer-events-none absolute bottom-[-20px] left-[-10px] h-44 w-44 rounded-full bg-gradient-to-br from-[#2C1A13] via-[#4F2B1E] to-[#8E5637] blur-[90px] opacity-60" />
-              <div className="relative flex h-full min-h-0 flex-col rounded-[28px] bg-white/85 p-4 shadow-inner">
-                <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-semibold uppercase tracking-[0.4em] text-stone-400">
-                  <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-4 py-1 text-amber-800">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />{" "}
-                    Live concierge
-                  </span>
-                  <span className="text-stone-500">
-                    Signed in as {currentUser.name || session?.user?.name}
-                  </span>
-                </div>
-                <div className="mt-4 flex flex-1 min-h-0 flex-col overflow-hidden rounded-[24px] border border-white/60 bg-white/75 p-4 shadow-lg shadow-white/60">
-                  <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden">
-                    <ChatWindow
-                      messages={messages}
-                      isLoading={isLoading}
-                      onInitiateCheckout={handleInitiateCheckout}
-                      wishlist={currentUser.wishlist}
-                      onToggleWishlist={handleToggleWishlist}
-                      products={products}
-                    />
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-2 pb-2">
-                      <div className="pointer-events-auto w-full max-w-3xl">
-                        <ChatInput
-                          onSendMessage={handleSendMessage}
-                          isLoading={isLoading}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+          <header className="flex-shrink-0 h-16 px-4 lg:px-6 flex items-center justify-between border-b border-stone-100/50 bg-white/50 backdrop-blur-md z-10">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <button
+                onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
+                className="p-2 rounded-full hover:bg-stone-200/50 text-stone-500 hover:text-stone-800 transition-colors"
+                title={isLeftSidebarOpen ? "Close sidebar" : "Open sidebar"}
+              >
+                {isLeftSidebarOpen ? (
+                  <PanelLeftClose className="h-5 w-5" />
+                ) : (
+                  <PanelLeftOpen className="h-5 w-5" />
+                )}
+              </button>
+              <div className="hidden sm:flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-amber-600 to-amber-700 text-white text-sm font-serif font-bold shadow-md shadow-amber-200">
+                R
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold text-stone-900 tracking-tight">
+                  Rasphia <span className="hidden sm:inline">Concierge</span>
+                </span>
+                <span className="text-[10px] uppercase tracking-wider text-stone-500 font-medium hidden sm:block">
+                  {currentUser.name ? `Session for ${currentUser.name}` : "Guest Session"}
+                </span>
               </div>
             </div>
-          </main>
 
-          {reviewingOrder && (
-            <ReviewModal
-              order={reviewingOrder}
-              onClose={handleCloseReview}
-              onSubmit={handleAddReview}
+            <div className="flex items-center gap-1 sm:gap-2">
+               <button
+                onClick={handleLogout}
+                className="hidden sm:block px-4 py-1.5 rounded-full text-xs font-medium text-stone-500 hover:bg-stone-100 hover:text-stone-900 transition-colors"
+              >
+                Sign out
+              </button>
+              <button
+                onClick={handleShowProfile}
+                className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-full bg-white border border-stone-200 text-stone-600 shadow-sm hover:scale-105 transition-all"
+              >
+                <ProfileIcon />
+              </button>
+              <button
+                onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+                className="p-2 ml-0 sm:ml-1 rounded-full hover:bg-stone-200/50 text-stone-500 hover:text-stone-800 transition-colors"
+                title={isRightSidebarOpen ? "Close tools" : "Open tools"}
+              >
+                {isRightSidebarOpen ? (
+                  <PanelRightClose className="h-5 w-5" />
+                ) : (
+                  <PanelRightOpen className="h-5 w-5" />
+                )}
+              </button>
+            </div>
+          </header>
+
+          {/* CHAT AREA */}
+          <div className="flex-1 flex flex-col relative overflow-hidden">
+            <ChatWindow
+              messages={messages}
+              isLoading={isLoading}
+              onInitiateCheckout={handleInitiateCheckout}
+              wishlist={currentUser.wishlist}
+              onToggleWishlist={handleToggleWishlist}
+              products={products}
             />
-          )}
+
+            {/* INPUT AREA */}
+            <div className="flex-shrink-0 px-6 pb-6 pt-4 bg-gradient-to-t from-white via-white/80 to-transparent">
+               <div className="max-w-3xl mx-auto">
+                  <ChatInput
+                    onSendMessage={handleSendMessage}
+                    isLoading={isLoading}
+                  />
+                  <div className="mt-3 text-center">
+                     <p className="text-[10px] text-stone-400 font-medium">
+                        Rasphia AI can make mistakes. Please verify product details.
+                     </p>
+                  </div>
+               </div>
+            </div>
+          </div>
+        </main>
+
+        {/* RIGHT PANEL - CONTEXT */}
+        {/* Mobile Backdrop */}
+        {isRightSidebarOpen && isMobile && (
+          <div 
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
+            onClick={() => setIsRightSidebarOpen(false)}
+          />
+        )}
+
+        <div className={`
+          ${isRightSidebarOpen ? 'flex' : 'hidden'}
+          fixed inset-y-2 right-2 z-50 w-[320px] h-[calc(100%-16px)] flex-col
+          xl:static xl:flex xl:h-full xl:w-[320px]
+          rounded-[32px] bg-white/60 backdrop-blur-xl border border-white/50 shadow-2xl xl:shadow-[0_8px_32px_rgba(0,0,0,0.04)] overflow-hidden transition-all duration-300
+        `}>
+          <AnalysisSidebar
+            onOpenAnalysis={handleOpenAnalysis}
+            onAttachToChat={handleAttachToChat}
+            recentAnalyses={recentAnalyses}
+            onOpenAnalysisDetails={handleOpenAnalysisDetails}
+            onOpenAnalysisList={handleOpenAnalysisList}
+          />
         </div>
       </div>
-      {/* RIGHT: Analysis Sidebar */}
-      <AnalysisSidebar
-        onOpenAnalysis={handleOpenAnalysis}
-        onAttachToChat={handleAttachToChat}
-        recentAnalyses={recentAnalyses}
-        onOpenAnalysisDetails={handleOpenAnalysisDetails}
-        onOpenAnalysisList={handleOpenAnalysisList}
-      />
 
+      {/* MODALS */}
+      {reviewingOrder && (
+        <ReviewModal
+          order={reviewingOrder}
+          onClose={handleCloseReview}
+          onSubmit={handleAddReview}
+        />
+      )}
       <AnalysisUploadModal
         isOpen={isAnalysisOpen}
         onClose={() => setIsAnalysisOpen(false)}
-        onAnalysisComplete={(analysis) => {
-          setRecentAnalyses((prev) => [analysis, ...prev]); // store new analysis
-        }}
+        onAnalysisComplete={handleAnalysisComplete}
         userEmail={currentUser.email}
         type={analysisType}
       />
