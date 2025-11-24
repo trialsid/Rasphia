@@ -545,7 +545,7 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
         <div className={`
           ${isLeftSidebarOpen ? 'flex' : 'hidden'}
           fixed inset-y-2 left-2 z-50 w-[280px] h-[calc(100%-16px)] flex-col
-          lg:static lg:flex lg:h-full lg:w-[280px]
+          lg:static lg:h-full lg:w-[280px]
           rounded-[32px] bg-white/60 backdrop-blur-xl border border-white/50 shadow-2xl lg:shadow-[0_8px_32px_rgba(0,0,0,0.04)] overflow-hidden transition-all duration-300
         `}>
           <ChatSidebar
@@ -653,7 +653,7 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
         <div className={`
           ${isRightSidebarOpen ? 'flex' : 'hidden'}
           fixed inset-y-2 right-2 z-50 w-[320px] h-[calc(100%-16px)] flex-col
-          xl:static xl:flex xl:h-full xl:w-[320px]
+          xl:static xl:h-full xl:w-[320px]
           rounded-[32px] bg-white/60 backdrop-blur-xl border border-white/50 shadow-2xl xl:shadow-[0_8px_32px_rgba(0,0,0,0.04)] overflow-hidden transition-all duration-300
         `}>
           <AnalysisSidebar
