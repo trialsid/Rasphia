@@ -511,16 +511,6 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
       />
     );
 
-  if (checkoutProduct)
-    return (
-      <CheckoutPage
-        product={checkoutProduct}
-        user={currentUser}
-        onPlaceOrder={handlePlaceOrder}
-        onCancel={handleCancelCheckout}
-      />
-    );
-
   return (
     <div className="relative h-screen w-full bg-[#F8F4EF] text-stone-900 font-sans overflow-hidden">
        {/* Background Gradients & Blobs */}
@@ -667,6 +657,14 @@ ${analysis.aiResult?.optimizedPrompt || analysis.aiResult?.summary || ""}
       </div>
 
       {/* MODALS */}
+      {checkoutProduct && (
+        <CheckoutPage
+          product={checkoutProduct}
+          user={currentUser}
+          onPlaceOrder={handlePlaceOrder}
+          onCancel={handleCancelCheckout}
+        />
+      )}
       {reviewingOrder && (
         <ReviewModal
           order={reviewingOrder}
